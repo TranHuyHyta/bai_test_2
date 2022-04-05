@@ -3,7 +3,9 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import socketserver
 import json
 
-
+with open("db.json") as data_file:
+	data = json.load(data_file)
+    
 class ServiceHandler(BaseHTTPRequestHandler):
 	#sets basic headers for the server
 	def _set_headers(self):
