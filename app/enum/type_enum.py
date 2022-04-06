@@ -1,15 +1,15 @@
 import enum
 
-class TypeEnumAccount(enum.Enum):
+class AccountType(enum.Enum):
     Merchant = "merchant"
     Personal = "personal"
     Issuer = "issuer"
 
-class TypeEnumTransaction(enum.Enum):
-    Initialized = "initialized"
-    Confirmed = "confirmed"
-    Verified = "verified"
-    Completed = "completed"
-    Expired = "Expired"
-    Canceled = "canceled"
-    Failed = "Failed"
+class TransactionType(enum.Enum):
+    INITIALIZED = "initialized"
+    CONFIRMED = "confirmed"
+    VERIFIED = "verified"
+    COMPLETED = "completed"
+    CANCELED = "canceled"
+    EXPIRED = 'expired'
+    FAILED = "failed"

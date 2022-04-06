@@ -1,49 +1,60 @@
-from app.enum.type_enum import TypeEnumAccount, TypeEnumTransaction
 import psycopg2
-import uuid
-from 
-def uuid_generate_v4():
-    return uuid.uuid4()
+
+conn = psycopg2.connect("dbname=test_db user=admin password=admin port=5432")
+cur= conn.cursor()
+
 
 def create_account_table():
-    conn = psycopg2.connect("dbname=test_db user=admin password=admin port=5432")
-    cur= conn.cursor()
-    cur.execute("CREATE TYPE account_type AS ENUM ('merchant', 'personal', 'issuer');")
-    cur.execute("CREATE TABLE IF NOT EXISTS account (id serial PRIMARY KEY, \
-                                                    account_id VARCHAR(100) DEFAULT uuid_generate_v4() NOT NULL, \
-                                                    merchant_id VARCHAR(100)  \
-                                                    balance integer,\
-                                                    account_type account_type);")
+    cur.execute("CREATE TABLE IF NOT EXISTS account (\
+        id serial PRIMARY KEY, \
+        account_id VARCHAR(100) UNIQUE DEFAULT uuid_generate_v4() NOT NULL, \
+        balance integer,\
+        account_type VARCHAR(100) NOT NULL);")
     conn.commit()
-    cur.close()
-    conn.close()
- 
+
 def create_merchant_table():
-    conn = psycopg2.connect("dbname=test_db user=admin password=admin port=5432")
-    cur = conn.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS merchant (id serial PRIMARY KEY, \
-                                                    account_id FOREIGN KEY (account_id) REFERENCES account(account_id), \
-                                                    merchant_name VARCHAR(50), \
-                                                    api_key VARCHAR(100) DEFAULT uuid_generate_v4() NOT NULL, \
-                                                    merchant_url VARCHAR(100);")
+    cur.execute("CREATE TABLE IF NOT EXISTS merchant (\
+        id serial PRIMARY KEY, \
+        account_id VARCHAR(100) REFERENCES account(account_id) NULL, \
+        merchant_id VARCHAR(100) UNIQUE DEFAULT uuid_generate_v4() NOT NULL, \
+        merchant_name VARCHAR(50), \
+        api_key VARCHAR(100) DEFAULT uuid_generate_v4() NOT NULL, \
+        merchant_url VARCHAR(100));")
     conn.commit()
+
+def create_transaction_table():
+    cur.execute("CREATE TABLE IF NOT EXISTS transaction (\
+        id serial PRIMARY KEY, \
+        transaction_id VARCHAR(100) DEFAULT uuid_generate_v4() NOT NULL, \
+        merchant_id VARCHAR(100), \
+        income_account VARCHAR(100), \
+        outcome_account VARCHAR(100),\
+        amount DOUBLE PRECISION,\
+        extra_data VARCHAR(100),\
+        signature VARCHAR(100),\
+        status VARCHAR(100) NOT NULL);")
+    conn.commit()
+
+def create_table():
+    command_extension = 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
+    cur.execute(command_extension)
+    create_account_table()
+    create_merchant_table()
+    create_transaction_table()
     cur.close()
     conn.close()
 
-def create_transaction_table():
-    conn = psycopg2.connect("dbname=test_db user=admin password=admin port=5432")
-    cur = conn.cursor()
-    cur.execute("CREATE TYPE transacion_status AS ENUM ('INITIALIZED', 'CONFIRMED', 'VERIFIED', 'COMPLETED', 'CANCELED', 'EXPIRED', 'FAILED');")
-    cur.execute("CREATE TABLE IF NOT EXISTS transaction (id serial PRIMARY KEY, \
-                                                        transaction_id VARCHAR(100) DEFAULT uuid_generate_v4() NOT NULL, \
-                                                        merchant_id FOREIGN KEY (account_id) REFERENCES account(account_id), \
-                                                        income_account DEFAULT uuid_generate_v4() NOT NULL, \
-                                                        outcome_account VARCHAR(100) DEFAULT uuid_generate_v4() NOT NULL,\
-                                                        amount DOUBLE PRECISION,\
-                                                        extra_data VARCHAR(100),\
-                                                        signature VARCHAR(100),\
-                                                        status transaction_status;")
-                                
-    conn.commit()
-    cur.close()
-    conn.close()
+def checkTableExists(tablename):
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.tables
+        WHERE table_name = '{0}'
+        """.format(tablename.replace('\'', '\'\'')))
+    if cur.fetchone()[0] == 1:
+        # cur.close()
+        return True
+
+    # cur.close()
+    return False
+
+create_table()
