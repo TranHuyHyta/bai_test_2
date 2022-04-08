@@ -4,23 +4,25 @@ conn = psycopg2.connect("dbname=test_db user=admin password=admin port=5432")
 cur= conn.cursor()
 
 
-def create_account_table():
-    cur.execute("CREATE TABLE IF NOT EXISTS account (\
-        id serial PRIMARY KEY, \
-        account_id VARCHAR(100) UNIQUE DEFAULT uuid_generate_v4() NOT NULL, \
-        balance integer,\
-        account_type VARCHAR(100) NOT NULL);")
-    conn.commit()
-
 def create_merchant_table():
     cur.execute("CREATE TABLE IF NOT EXISTS merchant (\
         id serial PRIMARY KEY, \
-        account_id VARCHAR(100) REFERENCES account(account_id) NULL, \
         merchant_id VARCHAR(100) UNIQUE DEFAULT uuid_generate_v4() NOT NULL, \
         merchant_name VARCHAR(50), \
         api_key VARCHAR(100) DEFAULT uuid_generate_v4() NOT NULL, \
         merchant_url VARCHAR(100));")
     conn.commit()
+
+def create_account_table():
+    cur.execute("CREATE TABLE IF NOT EXISTS account (\
+        id serial PRIMARY KEY, \
+        merchant_id VARCHAR(100) REFERENCES merchant(merchant_id),\
+        account_id VARCHAR(100) UNIQUE DEFAULT uuid_generate_v4() NOT NULL, \
+        balance DOUBLE PRECISION,\
+        account_type VARCHAR(100) NOT NULL);")
+    conn.commit()
+
+
 
 def create_transaction_table():
     cur.execute("CREATE TABLE IF NOT EXISTS transaction (\
@@ -38,8 +40,8 @@ def create_transaction_table():
 def create_table():
     command_extension = 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
     cur.execute(command_extension)
-    create_account_table()
     create_merchant_table()
+    create_account_table()
     create_transaction_table()
     cur.close()
     conn.close()
