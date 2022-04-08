@@ -36,7 +36,6 @@ def post_account_topup(auth_token, account_id, amount):
     for issuer in issuers:
         issuer_account_id = issuer[1]
         if id == issuer_account_id:
-            # print(id)
             command_update = f"UPDATE account SET balance='{amount}' WHERE account_id='{account_id}' RETURNING account_id"
             cur.execute(command_update)
             conn.commit()
