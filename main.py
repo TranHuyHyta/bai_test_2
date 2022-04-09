@@ -2,17 +2,18 @@ import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import psycopg2
+import requests
 
 from app.enum.type_enum import AccountType, TransactionType
-from app.service.account_service import (get_account_token, post_account, post_account_merchant,
+from app.service.account_service import (get_account_token, post_account,
+                                         post_account_merchant,
                                          post_account_topup)
-from app.service.merchant_service import post_merchant, get_merchant_token
-from app.service.transaction_service import (post_transaction_confirm,
-                                             post_transaction_create,
-                                             post_transaction_verify,
+from app.service.merchant_service import get_merchant_token, post_merchant
+from app.service.transaction_service import (decode_auth_token,
                                              post_transaction_cancel,
-                                             transfer,
-                                             decode_auth_token)
+                                             post_transaction_confirm,
+                                             post_transaction_create,
+                                             post_transaction_verify, transfer)
 
 conn = psycopg2.connect("dbname=test_db user=admin password=admin port=5432")
 cur= conn.cursor()
@@ -309,6 +310,23 @@ class ServiceHandler(BaseHTTPRequestHandler):
                 output_json = json.dumps(output_data)
                 self.wfile.write(output_json.encode('utf-8'))
 
+        elif self.path == '/merchanturl':
+            data = self.get_data_sent()
+            order_id = data['order_id']
+            status = data['status']
+            url = f"http://127.0.0.1:5000/cart/updateStatus/{order_id}/{status}"
+            output = {
+                "url" : url,
+                "Post status" : "OK" 
+            }
+            r = requests.post(url = url)
+            self.send_response(200)
+            self.send_header('Content-type','application/json')
+            self.end_headers()
+            output_json = json.dumps(output)
+            self.wfile.write(output_json.encode('utf-8'))
+
+            
 def run(server_class=HTTPServer, handler_class=ServiceHandler, port=8088):
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)

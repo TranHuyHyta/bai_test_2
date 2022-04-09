@@ -99,7 +99,6 @@ def post_transaction_verify(jwt_token, transaction_id):
 
     if status == TransactionType.CONFIRMED.value:
         if trans_amount > balance:
-            print(1)
             command_update_trans = f"UPDATE transaction SET status='{TransactionType.FAILED.value}' WHERE transaction_id='{transaction_id}'"
             cur.execute(command_update_trans)
             conn.commit()
@@ -153,7 +152,7 @@ def post_transaction_cancel(jwt_token, transaction_id):
     cur.execute(command_select_per)
     personal = cur.fetchone()
     personal_account_type = personal[4]
-    
+
     if personal_account_type == AccountType.Personal.value:
         if status == TransactionType.CONFIRMED.value:
             command_update = f"UPDATE transaction SET status='{TransactionType.CANCELED.value}' WHERE transaction_id='{transaction_id}'"
