@@ -34,7 +34,8 @@ def create_transaction_table():
         amount DOUBLE PRECISION,\
         extra_data VARCHAR(100),\
         signature VARCHAR(100),\
-        status VARCHAR(100) NOT NULL);")
+        status VARCHAR(100) NOT NULL,\
+        created_at TIMESTAMP);")
     conn.commit()
 
 def create_table():

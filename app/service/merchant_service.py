@@ -45,7 +45,7 @@ def encode_auth_token(API_KEY: str):
             return e
 
 
-def decode_auth_token(token: str):
+def decode_merchant_auth_token(token: str):
     try:
         payload = jwt.decode(token, key, algorithms='HS256')
         return payload['api_key']

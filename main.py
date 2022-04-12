@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import psycopg2
 import requests
+from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.enum.type_enum import AccountType, TransactionType
 from app.service.account_service import (get_account_token, post_account,
@@ -14,6 +15,7 @@ from app.service.transaction_service import (decode_auth_token,
                                              post_transaction_confirm,
                                              post_transaction_create,
                                              post_transaction_verify, transfer)
+from check_expired import check_transaction_expire
 
 conn = psycopg2.connect("dbname=test_db user=admin password=admin port=5432")
 cur= conn.cursor()
@@ -92,8 +94,8 @@ class ServiceHandler(BaseHTTPRequestHandler):
             #fetch data from postman
             data_account_type = self.get_data_sent()
             account_type = data_account_type['account_type']
-
-            account_id = post_account(account_type)
+            if account_type == AccountType.Issuer.value or account_type == AccountType.Personal.value:
+                account_id = post_account(account_type)
             
             output_data = {
                             "account_id": account_id[0],
@@ -137,24 +139,14 @@ class ServiceHandler(BaseHTTPRequestHandler):
             merchant_id = data['merchant_id']
             amount = data['amount']
             extra_data = data['extra_data']
-            try:
-                # print(1)
-                transaction_create = post_transaction_create(jwt_token, merchant_id, amount, extra_data)
+            
+            transaction_create = post_transaction_create(jwt_token, merchant_id, amount, extra_data)
 
-                command_select = f"SELECT * FROM transaction WHERE transaction_id='{transaction_create[0]}'"
-                cur.execute(command_select)
+            command_select = f"SELECT * FROM transaction WHERE transaction_id='{transaction_create[0]}'"
+            cur.execute(command_select)
 
-                transaction = cur.fetchone()
-            except:
-                command_update = f"UPDATE transaction SET status='{TransactionType.EXPIRED.value}' WHERE merchant_id='{merchant_id}'"
-                cur.execute(command_update)
-                conn.commit()
-
-                command_select = f"SELECT * FROM transaction WHERE merchant_id='{merchant_id}'"
-                cur.execute(command_select)
-
-                transaction = cur.fetchone()
-            print(transaction)
+            transaction = cur.fetchone()
+          
             output_data = {
                 "transaction_id": transaction[1],
                 "merchant_id": transaction[2],
@@ -176,45 +168,37 @@ class ServiceHandler(BaseHTTPRequestHandler):
             data = self.get_data_sent()
             personal_token = data['token']
             transaction_id = data['transaction_id']
-            try:
-                confirm = post_transaction_confirm(personal_token,transaction_id)
-                if confirm:
-                    output_data = {
-                        "code": "SUCCESS",
-                        "message": "transaction confirmed"
-                    }
-                    
-                    self.send_response(200)
-                    self.send_header('Content-type','application/json')
-                    self.end_headers()
-                    output_json = json.dumps(output_data)
+            
+            confirm = post_transaction_confirm(personal_token,transaction_id)
+            if confirm:
+                command_select=f"SELECT * FROM transaction WHERE transaction_id='{transaction_id}'"
+                cur.execute(command_select)
+                transaction = cur.fetchone()
+                order_id = transaction[6]
+                url = f"http://127.0.0.1:5000/cart/updateStatus/{order_id}/{TransactionType.CONFIRMED.value}"
+                requests.post(url = url)
+                output_data = {
+                    "code": "SUCCESS",
+                    "message": "transaction confirmed"
+                }
+                
+                self.send_response(200)
+                self.send_header('Content-type','application/json')
+                self.end_headers()
+                output_json = json.dumps(output_data)
 
-                    self.wfile.write(output_json.encode('utf-8'))
-                else:
-                    output_data = {
-                                "code": "FAILED",
-                                "message": "transaction failed"
-                            }
-                    self.send_response(200)
-                    self.send_header('Content-type','application/json')
-                    self.end_headers()
-                    output_json = json.dumps(output_data)
-                    self.wfile.write(output_json.encode('utf-8'))
-            except:
-                # self.send_response(404)
-                command_update = f"UPDATE transaction SET status='{TransactionType.EXPIRED.value}'  WHERE transaction_id='{transaction_id}'"
-                cur.execute(command_update)
-                conn.commit()
-
+                self.wfile.write(output_json.encode('utf-8'))
+            else:
                 output_data = {
                             "code": "FAILED",
-                            "message": "transaction expired"
+                            "message": "transaction failed"
                         }
                 self.send_response(200)
                 self.send_header('Content-type','application/json')
                 self.end_headers()
                 output_json = json.dumps(output_data)
                 self.wfile.write(output_json.encode('utf-8'))
+          
 
         elif self.path==('/transaction/verify'):
             data = self.get_data_sent()
@@ -230,55 +214,54 @@ class ServiceHandler(BaseHTTPRequestHandler):
             merchant_account_id = trans[2]
             print(merchant_account_id)
             amount = trans[5]
-            try:
-                verify = post_transaction_verify(personal_token, transaction_id)
-                if verify:
-                    print(1)
-                    transfer_balance = transfer(personal_id, merchant_account_id, amount)
-                    if transfer_balance:
-                        command_update = f"UPDATE transaction SET status='{TransactionType.COMPLETED.value}' WHERE transaction_id='{transaction_id}'"
-                        cur.execute(command_update)
-                        conn.commit()
-                        output_data = {
-                            "code": "SUCCESS",
-                            "message": "transaction completed"
-                        }
-                        self.send_response(200)
-                        self.send_header('Content-type','application/json')
-                        self.end_headers()
-                        output_json = json.dumps(output_data)
+           
+            verify = post_transaction_verify(personal_token, transaction_id)
+            if verify:
+                command_select=f"SELECT * FROM transaction WHERE transaction_id='{transaction_id}'"
+                cur.execute(command_select)
+                transaction = cur.fetchone()
+                order_id = transaction[6]
+                url = f"http://127.0.0.1:5000/cart/updateStatus/{order_id}/{TransactionType.VERIFIED.value}"
+                requests.post(url = url)
 
-                        self.wfile.write(output_json.encode('utf-8'))
-                else:
-                    
-                    command_update = f"UPDATE transaction SET status='{TransactionType.FAILED.value}' WHERE transaction_id='{transaction_id}'"
+                transfer_balance = transfer(personal_id, merchant_account_id, amount)
+                if transfer_balance:
+                    command_update = f"UPDATE transaction SET status='{TransactionType.COMPLETED.value}' WHERE transaction_id='{transaction_id}'"
                     cur.execute(command_update)
                     conn.commit()
+
+                    command_select=f"SELECT * FROM transaction WHERE transaction_id='{transaction_id}'"
+                    cur.execute(command_select)
+                    transaction = cur.fetchone()
+                    order_id = transaction[6]
+                    url = f"http://127.0.0.1:5000/cart/updateStatus/{order_id}/{TransactionType.COMPLETED.value}"
+                    requests.post(url = url)
+
                     output_data = {
-                            "code": "FAILED",
-                            "message": "transaction failed"
-                        }
-                    self.send_response(404)
+                        "code": "SUCCESS",
+                        "message": "transaction completed"
+                    }
+                    self.send_response(200)
                     self.send_header('Content-type','application/json')
                     self.end_headers()
                     output_json = json.dumps(output_data)
 
                     self.wfile.write(output_json.encode('utf-8'))
-            except:
-                
-                command_update = f"UPDATE transaction SET status='{TransactionType.EXPIRED.value}'  WHERE transaction_id='{transaction_id}'"
+            else:
+                command_update = f"UPDATE transaction SET status='{TransactionType.FAILED.value}' WHERE transaction_id='{transaction_id}'"
                 cur.execute(command_update)
                 conn.commit()
-
                 output_data = {
-                            "code": "FAILED",
-                            "message": "transaction expired"
-                        }
+                        "code": "FAILED",
+                        "message": "transaction failed"
+                    }
                 self.send_response(404)
                 self.send_header('Content-type','application/json')
                 self.end_headers()
                 output_json = json.dumps(output_data)
+
                 self.wfile.write(output_json.encode('utf-8'))
+        
         
         elif self.path==('/transaction/cancel'):
             data = self.get_data_sent()
@@ -310,26 +293,14 @@ class ServiceHandler(BaseHTTPRequestHandler):
                 output_json = json.dumps(output_data)
                 self.wfile.write(output_json.encode('utf-8'))
 
-        elif self.path == '/merchanturl':
-            data = self.get_data_sent()
-            order_id = data['order_id']
-            status = data['status']
-            url = f"http://127.0.0.1:5000/cart/updateStatus/{order_id}/{status}"
-            output = {
-                "url" : url,
-                "Post status" : "OK" 
-            }
-            r = requests.post(url = url)
-            self.send_response(200)
-            self.send_header('Content-type','application/json')
-            self.end_headers()
-            output_json = json.dumps(output)
-            self.wfile.write(output_json.encode('utf-8'))
 
             
 def run(server_class=HTTPServer, handler_class=ServiceHandler, port=8088):
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(check_transaction_expire, 'interval', seconds=300)
+    scheduler.start()   
     print('Server running at localhost:8088...')
     httpd.serve_forever()
 

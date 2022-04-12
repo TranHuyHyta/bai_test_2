@@ -2,24 +2,26 @@
 import hashlib
 import json
 import os
-import time
-
-from app.decorator.timeout import timeout
-from app.enum.type_enum import AccountType
+from datetime import datetime
 
 import jwt
 import psycopg2
-from app.enum.type_enum import TransactionType
+
+# from app.decorator.timeout import timeout
+from app.enum.type_enum import AccountType, TransactionType
+from app.service.account_service import decode_auth_token
+from app.service.merchant_service import decode_merchant_auth_token
 
 key = os.getenv('SECRET_KEY', "secret")
 conn = psycopg2.connect("dbname=test_db user=admin password=admin port=5432")
 cur= conn.cursor()
 
-@timeout(300)
+conn_1 = psycopg2.connect("dbname=test_db_1 user=admin password=admin port=5432")
+cur_1 = conn_1.cursor()
+
 def post_transaction_create(jwt_token, merchant_id, amount, extra_data):
     id = decode_merchant_auth_token(jwt_token)
-    # time.sleep(10) #check delay
-    # print(id)
+
     command_merchant_id = f"SELECT * FROM account WHERE merchant_id='{merchant_id}'"
     cur.execute(command_merchant_id)
     account = cur.fetchone()
@@ -31,6 +33,7 @@ def post_transaction_create(jwt_token, merchant_id, amount, extra_data):
     acc = cur.fetchone()
     mer_id = acc[1]
 
+
     data = {
         "merchant_id": merchant_id,
         "amount": amount,
@@ -40,25 +43,23 @@ def post_transaction_create(jwt_token, merchant_id, amount, extra_data):
     signature = hashlib.md5(data_json).hexdigest()
 
     if mer_id == merchant_id:
-        command_insert = f"INSERT INTO transaction(merchant_id, income_account, amount, extra_data, signature, status) \
-            VALUES('{merchant_id}','{merchant_account_id}','{amount}', '{extra_data}', '{signature}', '{TransactionType.INITIALIZED.value}') \
+        command_insert = f"INSERT INTO transaction(merchant_id, income_account, amount, extra_data, signature, status, created_at) \
+            VALUES('{merchant_id}','{merchant_account_id}','{amount}', '{extra_data}', '{signature}', '{TransactionType.INITIALIZED.value}', '{datetime.now()}') \
             RETURNING transaction_id"
         cur.execute(command_insert)
         conn.commit()
         return cur.fetchone()
 
-@timeout(300)
 def post_transaction_confirm(jwt_token, transaction_id):
     #decode personal account token
     id = decode_auth_token(jwt_token)
-    # print(id)
+
     #check personal_id
     command_select_acc = f"SELECT * FROM account WHERE account_id='{id}'"
     cur.execute(command_select_acc)
     account = cur.fetchone()
     account_id = account[2]
     balance = account[3]
-    # print(balance)
 
     command_select_trans = f"SELECT * FROM transaction WHERE transaction_id='{transaction_id}'"
     cur.execute(command_select_trans)
@@ -67,10 +68,7 @@ def post_transaction_confirm(jwt_token, transaction_id):
     status = transaction[8]
     
     if status == TransactionType.INITIALIZED.value:
-        print(status)
         if trans_amount > balance:
-            print(trans_amount)
-            print(balance)
             command_update_trans = f"UPDATE transaction SET status='{TransactionType.FAILED.value}' WHERE transaction_id='{transaction_id}"
             cur.execute(command_update_trans)
             conn.commit()
@@ -82,7 +80,6 @@ def post_transaction_confirm(jwt_token, transaction_id):
             return True
     return False
 
-@timeout(300)
 def post_transaction_verify(jwt_token, transaction_id):
     id = decode_auth_token(jwt_token)
     
@@ -162,37 +159,3 @@ def post_transaction_cancel(jwt_token, transaction_id):
     return False
 
 
-def encode_auth_token(account_id: str):
-        """
-        Generates the Auth Token
-        :return: string
-        """
-        try:
-            payload = {
-                'account_id': account_id
-            }
-            return jwt.encode(
-                payload,
-                key,
-                algorithm='HS256'
-            )
-        except Exception as e:
-            return e
-
-def decode_auth_token(token: str):
-    try:
-        payload = jwt.decode(token, key, algorithms='HS256')
-        return payload['account_id']
-    except jwt.ExpiredSignatureError:
-        return 'Signature expired. Please log in again.'
-    except jwt.InvalidTokenError:
-        return 'Invalid token. Please log in again.'
-
-def decode_merchant_auth_token(token: str):
-        try:
-            payload = jwt.decode(token, key, algorithms='HS256')
-            return payload['api_key']
-        except jwt.ExpiredSignatureError:
-            return 'Signature expired. Please log in again.'
-        except jwt.InvalidTokenError:
-            return 'Invalid token. Please log in again.'
